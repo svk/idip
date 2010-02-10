@@ -3,13 +3,13 @@ from idip import Board, Nation, Province
 def createStandardBoard():
     board = Board()
     
-    board.nations.add( Nation( "France" ) )
-    board.nations.add( Nation( "England" ) )
-    board.nations.add( Nation( "Germany" ) )
-    board.nations.add( Nation( "Russia" ) )
-    board.nations.add( Nation( "Austria" ) )
-    board.nations.add( Nation( "Turkey" ) )
-    board.nations.add( Nation( "Italy" ) )
+    board.addNation( Nation( "France" ) )
+    board.addNation( Nation( "England" ) )
+    board.addNation( Nation( "Germany" ) )
+    board.addNation( Nation( "Russia" ) )
+    board.addNation( Nation( "Austria" ) )
+    board.addNation( Nation( "Turkey" ) )
+    board.addNation( Nation( "Italy" ) )
 
     provinces = [
             # Africa
@@ -118,54 +118,54 @@ def createStandardBoard():
         Province( "WES", "Western Mediterranean Sea" ),
     ]
     for province in provinces:
-        board.provinces.add( province )
+        board.addProvince( province )
 
-    board.provinces.Lvp.setInitialUnit( board.nations.England, "army" )
-    board.provinces.Edi.coast().setInitialUnit( board.nations.England, "fleet" )
-    board.provinces.Lon.coast().setInitialUnit( board.nations.England, "fleet" )
+    board.provinces.Lvp.setUnit( board.nations.England, "army" )
+    board.provinces.Edi.coast().setUnit( board.nations.England, "fleet" )
+    board.provinces.Lon.coast().setUnit( board.nations.England, "fleet" )
     board.nations.England.addHome( board.provinces.Lvp )
     board.nations.England.addHome( board.provinces.Edi )
     board.nations.England.addHome( board.provinces.Lon )
 
-    board.provinces.Par.setInitialUnit( board.nations.France, "army" )
-    board.provinces.Mar.setInitialUnit( board.nations.France, "army" )
-    board.provinces.Bre.coast().setInitialUnit( board.nations.France, "fleet" )
+    board.provinces.Par.setUnit( board.nations.France, "army" )
+    board.provinces.Mar.setUnit( board.nations.France, "army" )
+    board.provinces.Bre.coast().setUnit( board.nations.France, "fleet" )
     board.nations.France.addHome( board.provinces.Par )
     board.nations.France.addHome( board.provinces.Mar )
     board.nations.France.addHome( board.provinces.Bre )
 
-    board.provinces.Mun.setInitialUnit( board.nations.Germany, "army" )
-    board.provinces.Ber.setInitialUnit( board.nations.Germany, "army" )
-    board.provinces.Kie.coast().setInitialUnit( board.nations.Germany, "fleet" )
+    board.provinces.Mun.setUnit( board.nations.Germany, "army" )
+    board.provinces.Ber.setUnit( board.nations.Germany, "army" )
+    board.provinces.Kie.coast().setUnit( board.nations.Germany, "fleet" )
     board.nations.Germany.addHome( board.provinces.Mun )
     board.nations.Germany.addHome( board.provinces.Ber )
     board.nations.Germany.addHome( board.provinces.Kie )
 
-    board.provinces.Ven.setInitialUnit( board.nations.Italy, "army" )
-    board.provinces.Rom.setInitialUnit( board.nations.Italy, "army" )
-    board.provinces.Nap.coast().setInitialUnit( board.nations.Italy, "fleet" )
+    board.provinces.Ven.setUnit( board.nations.Italy, "army" )
+    board.provinces.Rom.setUnit( board.nations.Italy, "army" )
+    board.provinces.Nap.coast().setUnit( board.nations.Italy, "fleet" )
     board.nations.Italy.addHome( board.provinces.Ven )
     board.nations.Italy.addHome( board.provinces.Rom )
     board.nations.Italy.addHome( board.provinces.Nap )
 
-    board.provinces.Vie.setInitialUnit( board.nations.Austria, "army" )
-    board.provinces.Bud.setInitialUnit( board.nations.Austria, "army" )
-    board.provinces.Tri.coast().setInitialUnit( board.nations.Austria, "fleet" )
+    board.provinces.Vie.setUnit( board.nations.Austria, "army" )
+    board.provinces.Bud.setUnit( board.nations.Austria, "army" )
+    board.provinces.Tri.coast().setUnit( board.nations.Austria, "fleet" )
     board.nations.Austria.addHome( board.provinces.Vie )
     board.nations.Austria.addHome( board.provinces.Bud )
     board.nations.Austria.addHome( board.provinces.Tri )
 
-    board.provinces.Con.setInitialUnit( board.nations.Turkey, "army" )
-    board.provinces.Smy.setInitialUnit( board.nations.Turkey, "army" )
-    board.provinces.Ank.coast().setInitialUnit( board.nations.Turkey, "fleet" )
+    board.provinces.Con.setUnit( board.nations.Turkey, "army" )
+    board.provinces.Smy.setUnit( board.nations.Turkey, "army" )
+    board.provinces.Ank.coast().setUnit( board.nations.Turkey, "fleet" )
     board.nations.Turkey.addHome( board.provinces.Con )
     board.nations.Turkey.addHome( board.provinces.Smy )
     board.nations.Turkey.addHome( board.provinces.Ank )
 
-    board.provinces.War.setInitialUnit( board.nations.Russia, "army" )
-    board.provinces.Mos.setInitialUnit( board.nations.Russia, "army" )
-    board.provinces.Sev.coast().setInitialUnit( board.nations.Russia, "fleet" )
-    board.provinces.Stp.coast("SC").setInitialUnit( board.nations.Russia, "fleet" )
+    board.provinces.War.setUnit( board.nations.Russia, "army" )
+    board.provinces.Mos.setUnit( board.nations.Russia, "army" )
+    board.provinces.Sev.coast().setUnit( board.nations.Russia, "fleet" )
+    board.provinces.Stp.coast("SC").setUnit( board.nations.Russia, "fleet" )
     board.nations.Russia.addHome( board.provinces.War )
     board.nations.Russia.addHome( board.provinces.Mos )
     board.nations.Russia.addHome( board.provinces.Sev )
@@ -700,10 +700,5 @@ def createStandardBoard():
 
 if __name__ == '__main__':
     board = createStandardBoard()
-    for province in board.provinces:
-        print( province.name, " ", province.displayName )
-        nbs = province.neighbours()
-        print( len(nbs), " ", nbs, " ", province.name )
-        for nb in nbs:
-            assert province in nb.neighbours()
-
+    for line in board.exportState():
+        print( line )
