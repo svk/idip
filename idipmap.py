@@ -171,8 +171,6 @@ def createStandardBoard():
     board.nations.Russia.addHome( board.provinces.Sev )
     board.nations.Russia.addHome( board.provinces.Stp )
 
-
-
         # Turkey
     board.provinces.Ank.coast().link( board.provinces.Con.coast() )
     board.provinces.Con.coast().link( board.provinces.Smy.coast() )
@@ -212,6 +210,7 @@ def createStandardBoard():
         # Coasts
     board.provinces.Stp.coast("NC").link( board.provinces.BAR )
     board.provinces.Stp.coast("NC").link( board.provinces.Nwy.coast() )
+    board.provinces.Nwy.coast().link( board.provinces.BAR )
     board.provinces.Nwy.coast().link( board.provinces.NWG )
     board.provinces.Nwy.coast().link( board.provinces.NTH )
     board.provinces.Nwy.coast().link( board.provinces.SKA )
@@ -697,5 +696,14 @@ def createStandardBoard():
         board.provinces.Lvp,
     ] )
 
+    return board
+
 if __name__ == '__main__':
-    createStandardBoard()
+    board = createStandardBoard()
+    for province in board.provinces:
+        print( province.name, " ", province.displayName )
+        nbs = province.neighbours()
+        print( len(nbs), " ", nbs, " ", province.name )
+        for nb in nbs:
+            assert province in nb.neighbours()
+

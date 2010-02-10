@@ -43,6 +43,8 @@ class Province:
         self.coasts = {}
         self.main = GraphNode( self )
         self.initialOwner = None
+    def __repr__(self):
+        return "Province(%s//%s)" % (self.name, self.displayName)
     def link(self, province):
         self.main.link( province.main )
     def node(self):
@@ -62,6 +64,12 @@ class Province:
         return self.coasts[ name ]
     def setInitialUnit( self, nation, unit ):
         self.main.setInitialUnit( nation, unit )
+    def neighbours(self):
+        rv = [ n.province for n in self.main.links ]
+        for coast in self.coasts.values():
+            for n in coast.links:
+                rv.append( n.province )
+        return set(rv)
 
 class Nation:
     def __init__(self, name, displayName = None):
