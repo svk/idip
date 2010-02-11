@@ -2,7 +2,8 @@ class MovementOrder:
     def __init__(self, source,
                        destination = None,
                        supportSource = None, supportDestination = None,
-                       convoySource = None, convoyDestination = None):
+                       convoySource = None, convoyDestination = None,
+                       byConvoy = False):
         self.destination = self.source = source
         if destination:
             self.destination = destination
@@ -12,9 +13,11 @@ class MovementOrder:
         self.convoySource = convoySource
         self.convoyDestination = convoyDestination
         self.convoy = self.convoySource != None
+        self.byConvoy = byConvoy
         assert (self.supportDestination == None) == (self.supportSource == None)
         assert (self.convoyDestination == None) == (self.convoySource == None)
         assert not (self.support and self.convoy)
+        assort not (self.byConvoy and (self.destination == self.source))
     def __str__(self):
         if self.support:
             rv = "{unitType} {source} S {suppSource}--{suppDest}"
@@ -22,6 +25,8 @@ class MovementOrder:
             rv = "{unitType} {source} C {convSource}--{convDest}"
         elif self.source == self.destination:
             rv = "{unitType} {source}--Holds"
+        elif self.byConvoy:
+            rv = "{unitType} {source}--{dest} (convoyed)"
         else:
             rv = "{unitType} {source}--{dest}"
         unitType = { 'fleet': 'F', 'army': 'A', None: '?' }[ self.source.unit ]
@@ -54,8 +59,9 @@ class MovementOrder:
         if self.support:
             # Must be able to move into the square against which the attack
             # is being supported.
+            if self.supportDestination == self.source:
+                return "cannot support to own sector"
             if not self.supportDestination in self.source.links:
-                
                 return "{unitType} cannot support {to} from {fr}".format(
                     unitType = unitType,
                     to = self.supportDestination.shortname(),
@@ -65,6 +71,11 @@ class MovementOrder:
         if self.convoy:
             if unitType != 'fleet':
                 return "cannot convoy with non-fleet"
+            convoyedUnitType = self.convoySource.unit
+            if convoyedUnitType == None:
+                return "no unit there to convoy"
+            if convoyedUnitType != 'army':
+                return "only armies can be convoyed"
             if self.source.province.unitCoast() != None:
                 return "cannot convoy along coast"
             if not self.convoyDestination in self.source.links:
@@ -72,13 +83,17 @@ class MovementOrder:
             if not self.convoySource in self.source.links:
                 return "not adjacent to convoy source"
             return ""
-        if not self.destination in self.source.links:
-            if self.destination.province in self.source.province.neighbours():
-                return {
-                    'fleet': 'not adjacent along coast to destination',
-                    'army': 'army cannot move into the sea',
-                }[ unitType ]
-            return "not adjacent to destination"
+        if not self.byConvoy:
+            if not self.destination in self.source.links:
+                if self.destination.province in self.source.province.neighbours():
+                    return {
+                        'fleet': 'not adjacent along coast to destination',
+                        'army': 'army cannot move into the sea',
+                    }[ unitType ]
+                return "not adjacent to destination"
+        # TODO low-priority, declare movement by convoy illegal if no
+        #  there is no path of ocean sectors with fleets from source to
+        #  to target
         return ""
 
 def interpretPair( board, s, selectCoastal, noHold = False):
@@ -93,6 +108,7 @@ def interpretPair( board, s, selectCoastal, noHold = False):
             return None
     if not noHold:
         if last.upper() == "HOLDS" or last.upper() == "HOLD":
+            # Note: this is a bit too tolerant for DATC 6a4
             last = first
     first = board.nodeByShortname( first, selectCoastal )
     last = board.nodeByShortname( last, selectCoastal )
@@ -101,6 +117,14 @@ def interpretPair( board, s, selectCoastal, noHold = False):
     return first, last
 
 def interpretMovementOrder( board, s ):
+    # TODO:
+    #   - accept (convoy) at the end
+    #   - accept A/F specifier of supported unit
+    #   - accept long names for provinces, possibly including spaces
+    #   - accept (and discard?) explicit convoy path specifiers:
+    #         A Bre-Eng-Nth-Nwy
+    #     instead of
+    #         A Bre-Nwy (convoy)
     tokens = s.split()
     if not tokens: return None
     dest = None
@@ -120,7 +144,12 @@ def interpretMovementOrder( board, s ):
                 return None
             selectCoastal = unitType == 'fleet'
             source, dest = interpretPair( board, tokens[0], selectCoastal )
-        return MovementOrder( source, destination = dest )
+        tokens.pop(0)
+        byConvoy = False
+        if tokens:
+            if tokens[0].upper() in [ "(C)", "(CONVOY)", "(CONVOYED)" ]:
+                byConvoy = True
+        return MovementOrder( source, destination = dest, byConvoy = byConvoy )
     except TypeError:
         pass
     source = board.nodeByShortname( tokens[0], selectCoastal )
@@ -136,6 +165,56 @@ def interpretMovementOrder( board, s ):
         ms, md = interpretPair( board, tokens[0], selectCoastal )
         return MovementOrder( source, supportSource = ms, supportDestination = md )
     return None
+
+def always(): return True
+def never(): return False
+
+class Force:
+    def __init__(self, condition = always):
+        self.finalizedSupporters = 0
+        self.dependentSupporters = []
+        self.add( condition )
+    def add(self, condition = always):
+        tf = condition()
+        if tf == None:
+            self.dependentSupporters.append( tf )
+        else:
+            if tf:
+                self.finalizedSupporters += 1
+    def tryFinalize(self):
+        for condition in self.dependentSupporters:
+            if condition() == None: continue
+            if condition():
+                self.finalizedSupporters += 1
+    def minimum(self):
+        self.tryFinalize()
+        return self.finalizedSupporters
+    def maximum(self):
+        self.tryFinalize()
+        return self.finalizedSupporters + len( self.dependentSupporters )
+    def strength(self):
+        self.tryFinalize()
+        if self.dependentSupporters:
+            return None
+        return self.finalizedSupporters
+
+# a move order (no convoy): certain (check: move cycles)
+# a support order: support dependent on no attack to supporter from flank
+#                  and no successful attack to supporter from border
+# move order (convoy): dependent
+
+class Battle:
+    def __init__(self, province):
+        self.province = province
+        self.attackers = {}
+        self.defenders = {}
+    def addMove(self, order):
+        # if moving, attacker on destination
+        assert self.province == order.destination.province
+        
+        # if holding, defender on source
+        # if supporting, support on support destination
+
 
 if __name__ == '__main__':
     from idipmap import createStandardBoard

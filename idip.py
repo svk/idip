@@ -2,26 +2,35 @@
 # Python 3 code
 # by kaw, use freely
 
+class _CaseInsensitiveString (str):
+    def __hash__(self):
+        return self.upper().__hash__()
+    def __cmp__(self, that):
+        return self.upper().__cmp__( that.upper() )
+    def __eq__(self, that ):
+        return self.upper().__eq__( that.upper() )
+
 class _NamedSet (dict):
     def __init__(self):
         dict.__init__(self)
     def add(self, duck):
-        dict.__setitem__( self, duck.name, duck )
+        dict.__setitem__( self, _CaseInsensitiveString( duck.name ), duck )
         return duck
     def __getitem__(self, name):
-        return dict.__getitem__( self, name )
+        return dict.__getitem__( self, _CaseInsensitiveString( name ) )
     def __getattr__(self, name):
-        return self[ name ]
+        return self[ _CaseInsensitiveString( name ) ]
     def __iter__(self):
         return dict.values( self ).__iter__()
     def empty(self):
         return 0 == dict.__len__( self )
 
 class GraphNode:
-    def __init__(self, province):
+    def __init__(self, province, name = None):
         self.province = province
         self.links = set()
         self.unit = None
+        self.name = name
     def node(self):
         return self
     def link(self, node, oneWay = False):
@@ -34,6 +43,10 @@ class GraphNode:
     def setUnit(self, nation, unit ):
         self.province.setOwner( nation )
         self.unit = unit
+    def shortname(self):
+        if not self.name:
+            return self.province.name
+        return "{province}({node})".format( province = self.province.name, node = self.name )
 
 
 class InvalidState:
@@ -59,13 +72,13 @@ class Province:
     def makeSupply(self):
         self.supplyCenter = True
         return self
-    def addCoast(self, name = "coast"):
-        self.coasts[ name ] = GraphNode( self )
+    def addCoast(self, name = None):
+        self.coasts[ _CaseInsensitiveString( name ) ] = GraphNode( self, name )
         return self
     def setOwner( self, nation ):
         self.owner = nation
-    def coast(self, name = "coast"):
-        return self.coasts[ name ]
+    def coast(self, name = None):
+        return self.coasts[ _CaseInsensitiveString( name ) ]
     def setUnit( self, nation, unit ):
         self.main.setUnit( nation, unit )
     def neighbours(self):
@@ -77,7 +90,7 @@ class Province:
     def unitCoast(self):
         for name,coast in self.coasts.items():
             if coast.unit:
-                return name
+                return str(name)
         return None
     def unit(self):
         if self.main.unit:
@@ -111,7 +124,7 @@ class Province:
             try:
                 unit = { 'A': 'army', 'F': 'fleet' } [ tokens.pop(0) ]
                 try:
-                    node = self.coasts[ tokens.pop(0) ]
+                    node = self.coasts[ _CaseInsensitiveString( tokens.pop(0) ) ]
                 except KeyError:
                     raise InvalidState()
             except IndexError:
@@ -136,11 +149,13 @@ class Board:
     def __init__(self):
         self.provinces = _NamedSet()
         self.nations = _NamedSet()
+        self.provincesByDisplayName = {}
     def addNation(self, nation):
         self.nations.add( nation )
         nation.board = self
     def addProvince(self, province):
         self.provinces.add( province )
+        self.provincesByDisplayName[ province.displayName.upper() ] = province
         province.board = self
     def importState(self, states):
         for province in self.provinces:
@@ -160,3 +175,29 @@ class Board:
             if tokens:
                 rv.append( " ".join( [ province.name ] + tokens ) )
         return rv
+    def provinceByName(self, shortname):
+        try:
+            return self.provinces[ shortname ]
+        except KeyError:
+            pass
+        try:
+            return self.provincesByDisplayName[ shortname.upper() ]
+        except KeyError:
+            pass
+        return None
+    def nodeByShortname(self, shortname, selectCoastal):
+        nodename = None
+        if "(" in shortname:
+            shortname, node = shortname.split( "(", 1 )
+            if not node.endswith( ")" ):
+                return None
+            nodename = node[:-1]
+        province = self.provinceByName( shortname )
+        if not province:
+            return None
+        if (not selectCoastal) or (not province.coasts):
+            return province.main
+        try:
+            return province.coasts[ _CaseInsensitiveString( nodename ) ]
+        except KeyError:
+            return None
