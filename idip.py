@@ -26,11 +26,12 @@ class _NamedSet (dict):
         return 0 == dict.__len__( self )
 
 class GraphNode:
-    def __init__(self, province, name = None):
+    def __init__(self, province, name = None, central = False):
         self.province = province
         self.links = set()
         self.unit = None
         self.name = name
+        self.central = central
     def node(self):
         return self
     def link(self, node, oneWay = False):
@@ -47,7 +48,21 @@ class GraphNode:
         if not self.name:
             return self.province.name
         return "{province}({node})".format( province = self.province.name, node = self.name )
-
+    def reachableBySatisfying(self, that, f):
+        todo = [ self ]
+        done = set(todo)
+        while todo:
+            next = todo.pop()
+            for link in next.links:
+                if link == that:
+                    return True
+                if f(link) and not (link in done):
+                    todo.append( link )
+                    done.add( link )
+        return False
+    def mayReachByConvoy(self, that, requireFleets = True):
+        return self.reachableBySatisfying( that, lambda l : ((not requireFleets) or l.unit == 'fleet') and l.central )
+    
 
 class InvalidState:
     pass
@@ -58,7 +73,7 @@ class Province:
         self.displayName = displayName
         self.supplyCenter = False
         self.coasts = {}
-        self.main = GraphNode( self )
+        self.main = GraphNode( self, central = True )
         self.owner = None
     def __repr__(self):
         return "Province({abbr}//{name})".format( abbr = self.name, name = self.displayName )
@@ -132,6 +147,13 @@ class Province:
             node.unit = unit
         except IndexError:
             raise InvalidState()
+    def mayConvoyTo(self, that, requireFleets = True):
+        for fromCoast in self.coasts.values():
+            for toCoast in that.coasts.values():
+                if fromCoast.mayReachByConvoy( toCoast, requireFleets ):
+                    return True
+        return False
+        
         
 
 class Nation:

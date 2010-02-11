@@ -17,7 +17,7 @@ class MovementOrder:
         assert (self.supportDestination == None) == (self.supportSource == None)
         assert (self.convoyDestination == None) == (self.convoySource == None)
         assert not (self.support and self.convoy)
-        assort not (self.byConvoy and (self.destination == self.source))
+        assert not (self.byConvoy and (self.destination == self.source))
     def __str__(self):
         if self.support:
             rv = "{unitType} {source} S {suppSource}--{suppDest}"
@@ -91,9 +91,11 @@ class MovementOrder:
                         'army': 'army cannot move into the sea',
                     }[ unitType ]
                 return "not adjacent to destination"
-        # TODO low-priority, declare movement by convoy illegal if no
-        #  there is no path of ocean sectors with fleets from source to
-        #  to target
+        if self.byConvoy:
+            if not self.source.province.mayConvoyTo( self.destination.province ):
+                if self.source.province.mayConvoyTo( self.destination.province, requireFleets = False):
+                    return "fleets not in place for convoy"
+                return "convoy between provinces not adjacent to the same ocean"
         return ""
 
 def interpretPair( board, s, selectCoastal, noHold = False):
@@ -149,6 +151,7 @@ def interpretMovementOrder( board, s ):
         if tokens:
             if tokens[0].upper() in [ "(C)", "(CONVOY)", "(CONVOYED)" ]:
                 byConvoy = True
+        if len( tokens ) > 1: return None
         return MovementOrder( source, destination = dest, byConvoy = byConvoy )
     except TypeError:
         pass
@@ -158,6 +161,7 @@ def interpretMovementOrder( board, s ):
     moveType = tokens[0]
     tokens.pop(0)
     if not tokens: return None
+    if len( tokens ) > 1: return None
     if moveType.upper() in [ "C", "CONVOY", "CONVOYS" ]:
         ms, md = interpretPair( board, tokens[0], selectCoastal, noHold = True )
         return MovementOrder( source, convoySource = ms, convoyDestination = md )
@@ -219,6 +223,9 @@ class Battle:
 if __name__ == '__main__':
     from idipmap import createStandardBoard
     board = createStandardBoard()
+    board.provinces.ENG.setUnit( board.nations.England, 'fleet' )
+    board.provinces.NTH.setUnit( board.nations.England, 'fleet' )
+    board.provinces.Pic.setUnit( board.nations.France, 'army' )
     for line in board.exportState():
         print( line )
     print()
@@ -229,6 +236,7 @@ if __name__ == '__main__':
             print( str(order) )
             illegality = order.illegality()
             if illegality:
-                print( illegality )
+                print( "illegal:", illegality )
+            print()
         else:
             print( "No interpretation." )
