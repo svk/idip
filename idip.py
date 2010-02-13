@@ -143,7 +143,8 @@ class Province:
                 except KeyError:
                     raise InvalidState()
             except IndexError:
-                pass
+                if unit == 'fleet':
+                    node = node.province.coast()
             node.unit = unit
         except IndexError:
             raise InvalidState()

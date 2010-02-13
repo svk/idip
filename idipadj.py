@@ -18,6 +18,11 @@ class MovementOrder:
         assert (self.convoyDestination == None) == (self.convoySource == None)
         assert not (self.support and self.convoy)
         assert not (self.byConvoy and (self.destination == self.source))
+    def makeHold(self):
+        self.destination = self.source
+        self.convoySource, self.convoyDestination = None, None
+        self.supportSource, self.supportDestination = None, None
+        self.byConvoy, self.convoy, self.support = False, False, False
     def __str__(self):
         if self.support:
             rv = "{unitType} {source} S {suppSource}--{suppDest}"
@@ -61,8 +66,8 @@ class MovementOrder:
             # is being supported.
             if self.supportDestination == self.source:
                 return "cannot support to own sector"
-            if not self.supportDestination.province in self.source.province.neighbours():
-                return "cannot support to non-adjacent sector"
+            if not self.supportDestination.province in [ link.province for link in self.source.links]:
+                return "cannot support to inaccessible sector"
             return ""
         if self.convoy:
             if unitType != 'fleet':
@@ -80,6 +85,8 @@ class MovementOrder:
                 return "convoy cannot succeed - provinces do not border the same ocean"
             return ""
         if not self.byConvoy:
+            if self.destination == self.source:
+                return ""
             if not self.destination in self.source.links:
                 if self.destination.province in self.source.province.neighbours():
                     return {
@@ -153,6 +160,13 @@ def interpretMovementOrder( board, s ):
     except TypeError:
         pass
     source = board.nodeByShortname( tokens[0], selectCoastal )
+    if unitType == None:
+        unitType = source.province.unit()
+        if unitType == None:
+            return None
+        selectCoastal = unitType == 'fleet'
+        if selectCoastal:
+            source = source.province.coast()
     tokens.pop(0)
     if not tokens: return None
     moveType = tokens[0]
@@ -254,7 +268,7 @@ class MovementTurn:
                 self.battles[ order.source.province.name ].addConvoy( order )
         # Second pass: movement orders, to destination
         for order in orders:
-            if order.source != order.destination:
+            if not (order.support or order.convoy):
                 self.battles[ order.destination.province.name ].addMove( order )
         # Third pass: support orders, to support destination
         for order in orders:
@@ -325,6 +339,10 @@ class Battle:
             else:
                 # nothing moves
                 pass
+            if self.defenders.strength() > 0 and len( self.attackers ):
+                print( "resolved", self.name, self.defenders.strength() )
+                for name, force in self.attackers.items():
+                    print( "attacker", name, force.strength() )
             self.resolved = True
             return True
         except UndeterminedException:
@@ -491,6 +509,11 @@ if __name__ == '__main__':
     from idipmap import createStandardBoard
     board = createStandardBoard()
 
+    print( "State of the board:" )
+    for line in board.exportState():
+        print( "\t", line )
+    print()
+
     print( "Input state, end with empty line." )
     state = []
     while True:
@@ -506,11 +529,22 @@ if __name__ == '__main__':
 
     print( "Input orders, end with an empty line." )
     orders = []
-    while True:
-        lastInput = input()
-        if not lastInput: break
-        order = interpretMovementOrder( board, lastInput )
-        orders.append( order )
+    try:
+        while True:
+            lastInput = input()
+            if not lastInput:
+                break
+            if lastInput.startswith( "#" ):
+                print( lastInput )
+            else:
+                order = interpretMovementOrder( board, lastInput )
+                print( order )
+                if order.illegality():
+                    print( "ignoring illegal move:", order.illegality() )
+                    order.makeHold()
+                orders.append( order )
+    except EOFError:
+        pass
     turn = MovementTurn( board )
     turn.addOrders( orders )
     print()
