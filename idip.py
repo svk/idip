@@ -153,8 +153,6 @@ class Province:
                 if fromCoast.mayReachByConvoy( toCoast, requireFleets ):
                     return True
         return False
-        
-        
 
 class Nation:
     def __init__(self, name, displayName = None):

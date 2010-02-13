@@ -57,16 +57,12 @@ class MovementOrder:
             return "no such unit"
         unitType = self.source.unit
         if self.support:
-            # Must be able to move into the square against which the attack
+            # Must be able to move into the PROVINCE against which the attack
             # is being supported.
             if self.supportDestination == self.source:
                 return "cannot support to own sector"
-            if not self.supportDestination in self.source.links:
-                return "{unitType} cannot support {to} from {fr}".format(
-                    unitType = unitType,
-                    to = self.supportDestination.shortname(),
-                    fr = self.source.shortname(),
-                )
+            if not self.supportDestination.province in self.source.province.neighbours():
+                return "cannot support to non-adjacent sector"
             return ""
         if self.convoy:
             if unitType != 'fleet':
@@ -78,10 +74,10 @@ class MovementOrder:
                 return "only armies can be convoyed"
             if self.source.province.unitCoast() != None:
                 return "cannot convoy along coast"
-            if not self.convoyDestination in self.source.links:
-                return "not adjacent to convoy destination"
-            if not self.convoySource in self.source.links:
-                return "not adjacent to convoy source"
+            if not self.convoySource.province.mayConvoyTo( self.convoyDestination.province ):
+                if self.convoySource.province.mayConvoyTo( self.convoyDestination.province, requireFleets = False):
+                    return "convoy cannot succeed"
+                return "convoy cannot succeed - provinces do not border the same ocean"
             return ""
         if not self.byConvoy:
             if not self.destination in self.source.links:
@@ -91,7 +87,7 @@ class MovementOrder:
                         'army': 'army cannot move into the sea',
                     }[ unitType ]
                 return "not adjacent to destination"
-        if self.byConvoy:
+        else:
             if not self.source.province.mayConvoyTo( self.destination.province ):
                 if self.source.province.mayConvoyTo( self.destination.province, requireFleets = False):
                     return "fleets not in place for convoy"
@@ -127,6 +123,7 @@ def interpretMovementOrder( board, s ):
     #         A Bre-Eng-Nth-Nwy
     #     instead of
     #         A Bre-Nwy (convoy)
+    #   - XXX convoys are specified by army movement, not piecewise
     tokens = s.split()
     if not tokens: return None
     dest = None
@@ -163,33 +160,54 @@ def interpretMovementOrder( board, s ):
     if not tokens: return None
     if len( tokens ) > 1: return None
     if moveType.upper() in [ "C", "CONVOY", "CONVOYS" ]:
-        ms, md = interpretPair( board, tokens[0], selectCoastal, noHold = True )
+        ms, md = interpretPair( board, tokens[0], selectCoastal = False, noHold = True )
         return MovementOrder( source, convoySource = ms, convoyDestination = md )
     if moveType.upper() in [ "S", "SUPPORT", "SUPPORTS" ]:
+        ms, md = interpretPair( board, tokens[0], selectCoastal )
+        selectCoastal = ms.province.unit() == 'fleet'
         ms, md = interpretPair( board, tokens[0], selectCoastal )
         return MovementOrder( source, supportSource = ms, supportDestination = md )
     return None
 
-def always(): return True
-def never(): return False
+class UndeterminedException (BaseException):
+    pass
 
+class Dependency:
+    def __init__(self, provinces, f):
+        # a non-convoyed move is independent
+        # a convoyed move is dependent on all the fleets ordered to convoy
+        #  that could possibly convoy it, determined when either enough are
+        #  dislodged to exclude  a convoy or enough are secure to guarantee
+        #  one
+        # a support move is dependent on its originating province
+        self.provinces = provinces
+        self.f = f
+    def __call__(self):
+        return self.f()
+
+always = Dependency( provinces = [], f = lambda : True )
+never = Dependency( provinces = [], f = lambda : False )
+    
 class Force:
-    def __init__(self, condition = always):
+    def __init__(self, name, condition = always, doAdd = True):
+        self.name = name
         self.finalizedSupporters = 0
         self.dependentSupporters = []
-        self.add( condition )
+        if doAdd:
+            self.add( condition )
     def add(self, condition = always):
-        tf = condition()
-        if tf == None:
-            self.dependentSupporters.append( tf )
-        else:
-            if tf:
-                self.finalizedSupporters += 1
+        self.dependentSupporters.append( condition )
     def tryFinalize(self):
         for condition in self.dependentSupporters:
-            if condition() == None: continue
-            if condition():
-                self.finalizedSupporters += 1
+            try:
+                print("evaluating condition")
+                if condition():
+                    print("counted")
+                    self.finalizedSupporters += 1
+                print("done evaluating condition")
+                self.dependentSupporters.remove( condition )
+            except UndeterminedException:
+                pass
     def minimum(self):
         self.tryFinalize()
         return self.finalizedSupporters
@@ -199,36 +217,292 @@ class Force:
     def strength(self):
         self.tryFinalize()
         if self.dependentSupporters:
-            return None
+            raise UndeterminedException()
         return self.finalizedSupporters
+    def dependencies(self):
+        rv = set()
+        self.tryFinalize()
+        for supporter in self.dependentSupporters:
+            for dependency in supporter.provinces:
+                rv.add( dependency )
+        return rv
 
 # a move order (no convoy): certain (check: move cycles)
 # a support order: support dependent on no attack to supporter from flank
 #                  and no successful attack to supporter from border
 # move order (convoy): dependent
 
+class MovementTurn:
+    def __init__(self, board):
+        self.board = board
+        self.battles = {}
+        for province in self.board.provinces:
+            self.battles[ province.name ] = Battle( self, province )
+        self.movement = [] # list of pairs of provinces
+        self.retreats = [] # list of provinces
+    def tryResolveSimple(self):
+        somethingWorked = True
+        while somethingWorked:
+            somethingWorked = False
+            for battle in self.unresolved():
+                if battle.tryResolveSimple():
+                    somethingWorked = True
+    def unresolved(self):
+        return filter( lambda x: not x.resolved, self.battles.values() )
+        
+
 class Battle:
-    def __init__(self, province):
+    def __init__(self, turn, province):
+        self.turn = turn
+        self.name = province.name
         self.province = province
         self.attackers = {}
-        self.defenders = {}
+        self.defenders = Force( self.name, doAdd = False )
+        self.convoyFrom = None
+        self.convoyTo = None
+        self.resolved = False
+        self.defending = False
+    def dependencies(self):
+        rv = set()
+        for force in self.attackers.values():
+            for dep in force.dependencies():
+                rv.add( dep )
+        for dep in self.defenders.dependencies():
+            rv.add( dep )
+        return rv
+    def addConvoy(self, order):
+        self.defenders.add()
+        self.convoyFrom = order.convoySource.province.name
+        self.convoyTo = order.convoyDestination.province.name
     def addMove(self, order):
         # if moving, attacker on destination
+        # convoyed moves must be added _after_ convoys
+        # XXX moving should also add a conditional hold in source, dependent on
+        #  the attack not succeeding
         assert self.province == order.destination.province
-        
-        # if holding, defender on source
+        name = order.source.province.name
+        condition = always
+        if order.byConvoy:
+            condition = self.turn.battles[ name ].makeConvoyedDependency( self.province )
+        self.attackers[ name ] = Force( name, condition )
+    def addHold(self):
+        # if holding, defender on source, unconditional
+        self.defenders.add()
+        self.defending = True
+    def addSupport(self, order):
         # if supporting, support on support destination
-
-
+        # support orders must be added _after_ move/hold orders
+        if order.supportSource == order.supportDestination:
+            side = self.defenders
+        else:
+            sourceName = order.supportSource.province.name
+            side = self.attackers[ sourceName ]
+        condition = self.turn.battles[ order.source.province.name ].makeSupportDependency( order.supportDestination.province )
+        try:
+            side.add( condition )
+        except KeyError:
+            pass # support order failed; no such attack/hold
+    def tryResolveSimple(self):
+        if self.resolved:
+            return False
+        try:
+            if self.beingDislodged():
+                # strongest attacker succeeds
+                name, attacker = max( self.attackers.items(), key = lambda ab : ab[1].strength() )
+                self.turn.movement.append( (name, self.name) )
+                if self.defenders.strength() > 0:
+                    self.turn.retreats.append( self.name )
+            else:
+                # nothing moves
+                pass
+            self.resolved = True
+            return True
+        except UndeterminedException:
+            pass
+    def beingDislodged(self):
+        # first, disregard inferior or equal forces to the defenders
+        # if none are left, we are safe
+        # while there are attackers left, look at the best attacker(s):
+        #   if there are multiple, we are safe (return)
+        #   else we have single best attacker
+        #   if this is friendly, we are safe (return)
+        #   if it has friendly support, reduce its strength by one
+        #   else we are dislodged (return)
+        # we are safe (return)
+        # note this may raise UndeterminedException
+        # XXX not yet implemented fully!
+        print( self.name )
+        atts = {}
+        defense = self.defenders.strength()
+        print( "defense with strength", defense )
+        for attacker in self.attackers.values():
+            strength = attacker.strength()
+            print( "attacker with strength", strength )
+            if strength > defense:
+                atts[ attacker.name ] = strength
+        while atts:
+            bestVal = max( atts.values() )
+            bestVals = list( filter( lambda ab : ab[1] == bestVal, atts.items() ) )
+            if len(bestVals) > 1:
+                # attackers bounce
+                return False
+            bestVal = bestVals[0]
+            bestValName, bestValStrength = bestVal
+            bestAtt = self.turn.board.provinces[ bestValName ].owner
+            ourOwner = self.turn.board.provinces[ self.name ].owner
+            if bestAtt == ourOwner:
+                # never dislodged by friendly attacker
+                return False
+            if False: # TODO handle friendly support, dropping it one at a time
+                pass 
+            else:
+                return True
+        return False
+    def makeSupportDependency(self, against):
+        def f():
+            for name,force in self.attackers.items():
+                if self.turn.board.provinces[ name ].owner == self.province.owner:
+                    continue
+                if name != against.name:
+                    if force.strength() > 0:
+                        return False
+            # Obscure case: being attacked by a superior force, but not being
+            #  dislodged because of a self-standoff by two even stronger forces.
+            #  Requires eight neighbours.
+            #  England:
+            #     F ENG S Gas-Bre
+            #     F NTH-ENG
+            #     F Bel S NTH-ENG
+            #     F Lon S NTH-ENG
+            #     F MAO-ENG
+            #     F IRI S MAO-ENG
+            #     F Wal S MAO-ENG
+            #  France:
+            #     F Bre-ENG
+            #     F Pic S Bre-ENG
+            #     A Par-Bre
+            #  Italy:
+            #     A Gas-Bre
+            #  Result should be Gascony moving into Brest, not standoff with Paris.
+            return not self.beingDislodged()
+        return Dependency( provinces = [self], f = f )
+    def makeConvoyedDependency(self, towards):
+        todo = []
+        def willConvoy( link ):
+            if not link.central:
+                return False
+            if not link.unit == 'fleet':
+                return False
+            if self.turn.battles[ link.province.name ].convoyFrom != self.name:
+                return False
+            if self.turn.battles[ link.province.name ].convoyTo != towards.name:
+                return False
+            return True
+        for coast in self.province.coasts.values():
+            for link in filter( willConvoy, coast.links ):
+                todo.append( link )
+        done = set(todo)
+        while todo:
+            next = todo.pop()
+            for link in filter( willConvoy, next.links ):
+                if link in done: continue
+                todo.append( link )
+                done.add( link )
+        reachable = False
+        for ocean in done:
+            for link in ocean.links:
+                if link.province == towards:
+                    reachable = True
+        if not reachable:
+            return Dependency( provinces = [], f = lambda : False )
+        dependencies = []
+        for node in done:
+            if willConvoy( node ):
+                dependencies.append( self.turn.battles[ node.province.name ] )
+        print( "convoying: ", " ".join( map( lambda x: x.name, dependencies ) ) )
+        def canReach():
+            goodConvoys = []
+            okayConvoys = []
+            for convoy in dependencies:
+                try:
+                    if not self.turn.battles[ convoy.name ].beingDislodged():
+                        goodConvoys.append( convoy.name )
+                        okayConvoys.append( convoy.name )
+                except UndeterminedException:
+                    okayConvoys.append( convoy.name )
+            visiting = [ self.name ]
+            visited = set( visiting )
+            okayReach = False
+            while visiting:
+                next = visiting.pop()
+                print( "okay-reached", next )
+                if next == towards.name:
+                    okayReach = True
+                    break
+                outlinks = filter( lambda x: (x == towards.name) or ((x in okayConvoys) and not (x in visited)),
+                  [ province.name for province in self.turn.board.provinces[ next ].neighbours() ]
+                  )
+                outlinks = list( outlinks )
+                for outlink in outlinks:
+                    visiting.append( outlink )
+                    visited.add( outlink )
+            if not okayReach:
+                return False
+            print ("CAN okayreach")
+            # ahoy there, code duplication ahead
+            visiting = [ self.name ]
+            visited = set( visiting )
+            goodReach = False
+            while visiting:
+                next = visiting.pop()
+                print( "good-reached", next )
+                if next == towards.name:
+                    goodReach = True
+                    break
+                outlinks = filter( lambda x: (x == towards.name) or ((x in goodConvoys) and not (x in visited)),
+                  [ province.name for province in self.turn.board.provinces[ next ].neighbours() ]
+                  )
+                outlinks = list( outlinks )
+                print( "good outlinks for", next, outlinks )
+                for outlink in outlinks:
+                    print( "adding", outlink )
+                    visiting.append( outlink )
+                    visited.add( outlink )
+                print( "visiting", visiting )
+            if goodReach:
+                return True
+            print ("CANNOT goodreach")
+            raise UndeterminedException()
+        return Dependency( provinces = dependencies, f = canReach )
+        
+        
 if __name__ == '__main__':
     from idipmap import createStandardBoard
     board = createStandardBoard()
-    board.provinces.ENG.setUnit( board.nations.England, 'fleet' )
+    board.provinces.ENG.setUnit( board.nations.France, 'fleet' )
     board.provinces.NTH.setUnit( board.nations.England, 'fleet' )
     board.provinces.Pic.setUnit( board.nations.France, 'army' )
+    board.provinces.Hol.setUnit( board.nations.France, 'army' )
+    board.provinces.Bur.setUnit( board.nations.France, 'army' )
+    board.provinces.Bel.setUnit( board.nations.Germany, 'army' )
+
     for line in board.exportState():
         print( line )
     print()
+
+    turn = MovementTurn( board )
+    turn.battles["ENG"].addConvoy( interpretMovementOrder( board, "F ENG C Pic-Nwy" ) )
+    turn.battles["NTH"].addConvoy( interpretMovementOrder( board, "F NTH C Pic-Nwy" ) )
+    turn.battles["Nwy"].addMove( interpretMovementOrder( board, "A Pic-Nwy (CONVOY)" ) )
+    print( "Unresolved provinces:", len( list( turn.unresolved() ) ) )
+    turn.tryResolveSimple()
+    print( "Unresolved provinces:", len( list( turn.unresolved() ) ) )
+    for alpha, beta in turn.movement:
+        print( "Moving", alpha, beta )
+    for alpha in turn.retreats:
+        print( "Retreating", alpha )
+
+
     while True:
         data = input()
         order = interpretMovementOrder( board, data )

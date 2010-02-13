@@ -702,3 +702,11 @@ if __name__ == '__main__':
     board = createStandardBoard()
     for line in board.exportState():
         print( line )
+    print()
+    nblist = []
+    for province in board.provinces.values():
+        nblist.append( (len( province.neighbours()), province.displayName ) )
+    nblist.sort()
+    for n, name in nblist:
+        print( name, n )
+        
