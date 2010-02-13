@@ -200,11 +200,8 @@ class Force:
     def tryFinalize(self):
         for condition in self.dependentSupporters:
             try:
-                print("evaluating condition")
                 if condition():
-                    print("counted")
                     self.finalizedSupporters += 1
-                print("done evaluating condition")
                 self.dependentSupporters.remove( condition )
             except UndeterminedException:
                 pass
@@ -249,7 +246,20 @@ class MovementTurn:
                     somethingWorked = True
     def unresolved(self):
         return filter( lambda x: not x.resolved, self.battles.values() )
-        
+    def addOrders(self, orders):
+        orders = list( orders )
+        # First pass: convoy orders, to source
+        for order in orders:
+            if order.convoy:
+                self.battles[ order.source.province.name ].addConvoy( order )
+        # Second pass: movement orders, to destination
+        for order in orders:
+            if order.source != order.destination:
+                self.battles[ order.destination.province.name ].addMove( order )
+        # Third pass: support orders, to support destination
+        for order in orders:
+            if order.support:
+                self.battles[ order.supportDestination.province.name ].addSupport( order )
 
 class Battle:
     def __init__(self, turn, province):
@@ -331,13 +341,10 @@ class Battle:
         # we are safe (return)
         # note this may raise UndeterminedException
         # XXX not yet implemented fully!
-        print( self.name )
         atts = {}
         defense = self.defenders.strength()
-        print( "defense with strength", defense )
         for attacker in self.attackers.values():
             strength = attacker.strength()
-            print( "attacker with strength", strength )
             if strength > defense:
                 atts[ attacker.name ] = strength
         while atts:
@@ -419,7 +426,6 @@ class Battle:
         for node in done:
             if willConvoy( node ):
                 dependencies.append( self.turn.battles[ node.province.name ] )
-        print( "convoying: ", " ".join( map( lambda x: x.name, dependencies ) ) )
         def canReach():
             goodConvoys = []
             okayConvoys = []
@@ -435,7 +441,6 @@ class Battle:
             okayReach = False
             while visiting:
                 next = visiting.pop()
-                print( "okay-reached", next )
                 if next == towards.name:
                     okayReach = True
                     break
@@ -448,14 +453,12 @@ class Battle:
                     visited.add( outlink )
             if not okayReach:
                 return False
-            print ("CAN okayreach")
             # ahoy there, code duplication ahead
             visiting = [ self.name ]
             visited = set( visiting )
             goodReach = False
             while visiting:
                 next = visiting.pop()
-                print( "good-reached", next )
                 if next == towards.name:
                     goodReach = True
                     break
@@ -463,54 +466,72 @@ class Battle:
                   [ province.name for province in self.turn.board.provinces[ next ].neighbours() ]
                   )
                 outlinks = list( outlinks )
-                print( "good outlinks for", next, outlinks )
                 for outlink in outlinks:
-                    print( "adding", outlink )
                     visiting.append( outlink )
                     visited.add( outlink )
-                print( "visiting", visiting )
             if goodReach:
                 return True
             print ("CANNOT goodreach")
             raise UndeterminedException()
         return Dependency( provinces = dependencies, f = canReach )
+
+# How to resolve the "complicated" cases?
+# For convoys: a convoyed army in a cycle cannot cut support
+# Rule 21: When a convoy cycle (the only sort of dependency
+#          cycle remaining after elimination of move-cycles, check)
+#          is detected, remove all conditional attacks against 
+#          supporters of attacks against convoys by units having
+#          those convoys as potential convoyers.
+# Rule 22: This should succeed automatically; there is no cycle
+#          if there is at least one guaranteed successful route.
+
         
         
 if __name__ == '__main__':
     from idipmap import createStandardBoard
     board = createStandardBoard()
-    board.provinces.ENG.setUnit( board.nations.France, 'fleet' )
-    board.provinces.NTH.setUnit( board.nations.England, 'fleet' )
-    board.provinces.Pic.setUnit( board.nations.France, 'army' )
-    board.provinces.Hol.setUnit( board.nations.France, 'army' )
-    board.provinces.Bur.setUnit( board.nations.France, 'army' )
-    board.provinces.Bel.setUnit( board.nations.Germany, 'army' )
 
+    print( "Input state, end with empty line." )
+    state = []
+    while True:
+        lastInput = input()
+        if not lastInput: break
+        state.append( lastInput )
+    board.importState( state )
+
+    print( "State of the board:" )
     for line in board.exportState():
-        print( line )
+        print( "\t", line )
     print()
 
-    turn = MovementTurn( board )
-    turn.battles["ENG"].addConvoy( interpretMovementOrder( board, "F ENG C Pic-Nwy" ) )
-    turn.battles["NTH"].addConvoy( interpretMovementOrder( board, "F NTH C Pic-Nwy" ) )
-    turn.battles["Nwy"].addMove( interpretMovementOrder( board, "A Pic-Nwy (CONVOY)" ) )
-    print( "Unresolved provinces:", len( list( turn.unresolved() ) ) )
-    turn.tryResolveSimple()
-    print( "Unresolved provinces:", len( list( turn.unresolved() ) ) )
-    for alpha, beta in turn.movement:
-        print( "Moving", alpha, beta )
-    for alpha in turn.retreats:
-        print( "Retreating", alpha )
-
-
+    print( "Input orders, end with an empty line." )
+    orders = []
     while True:
-        data = input()
-        order = interpretMovementOrder( board, data )
-        if order:
-            print( str(order) )
-            illegality = order.illegality()
-            if illegality:
-                print( "illegal:", illegality )
-            print()
-        else:
-            print( "No interpretation." )
+        lastInput = input()
+        if not lastInput: break
+        order = interpretMovementOrder( board, lastInput )
+        orders.append( order )
+    turn = MovementTurn( board )
+    turn.addOrders( orders )
+    print()
+
+    print( "Attempting to resolve." )
+
+    turn.tryResolveSimple()
+
+    unresolvedProvinces = list( turn.unresolved() )
+    for province in unresolvedProvinces:
+        print( "Unresolved:", province.displayName )
+    if not unresolvedProvinces:
+        print()
+        moves, retreats =  0, 0
+        for alpha, omega in turn.movement:
+            pFrom = board.provinces[ alpha ]
+            pTo = board.provinces[ omega ]
+            print( "MOVE", pFrom.displayName, pTo.displayName )
+            moves += 1
+        for alpha in turn.retreats:
+            pFrom = board.provinces[ alpha ]
+            print( "RETREAT", pFrom.displayName )
+            retreats += 1
+        print( "{moves} moves and {retreats} retreats".format( moves = moves, retreats = retreats ) )

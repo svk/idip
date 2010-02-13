@@ -181,7 +181,7 @@ class Board:
         for province in self.provinces:
             province.clearState()
         for state in states:
-            tokens = split.state()
+            tokens = state.split()
             try:
                 provinceAbbr = tokens.pop(0).strip()
                 province = self.provinces[ provinceAbbr ]
