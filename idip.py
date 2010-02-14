@@ -75,6 +75,7 @@ class Province:
         self.coasts = {}
         self.main = GraphNode( self, central = True )
         self.owner = None
+        self.alternateNames = []
     def __repr__(self):
         return "Province({abbr}//{name})".format( abbr = self.name, name = self.displayName )
     def link(self, province):
