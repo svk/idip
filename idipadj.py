@@ -1,3 +1,9 @@
+def definiteUnit( unit ):
+    return {
+        'fleet': 'a fleet',
+        'army': 'an army',
+    }[ unit ]
+
 class MovementOrder:
     def __init__(self, source,
                        destination = None,
@@ -192,35 +198,33 @@ class UndeterminedException (BaseException):
     pass
 
 class Dependency:
-    def __init__(self, provinces, f):
+    def __init__(self, name, provinces, f):
         # a non-convoyed move is independent
         # a convoyed move is dependent on all the fleets ordered to convoy
         #  that could possibly convoy it, determined when either enough are
         #  dislodged to exclude  a convoy or enough are secure to guarantee
         #  one
         # a support move is dependent on its originating province
+        self.name = name
         self.provinces = provinces
         self.f = f
     def __call__(self):
         return self.f()
 
-always = Dependency( provinces = [], f = lambda : True )
-never = Dependency( provinces = [], f = lambda : False )
-    
 class Force:
-    def __init__(self, name, condition = always, doAdd = True):
+    def __init__(self, name):
         self.name = name
         self.finalizedSupporters = 0
         self.dependentSupporters = []
-        if doAdd:
-            self.add( condition )
-    def add(self, condition = always):
+        self.supporterNames = []
+    def add(self, condition):
         self.dependentSupporters.append( condition )
     def tryFinalize(self):
         for condition in self.dependentSupporters:
             try:
                 if condition():
                     self.finalizedSupporters += 1
+                    self.supporterNames.append( condition.name )
                 self.dependentSupporters.remove( condition )
             except UndeterminedException:
                 pass
@@ -256,6 +260,7 @@ class MovementTurn:
             self.battles[ province.name ] = Battle( self, province )
         self.movement = [] # list of pairs of provinces
         self.retreats = [] # list of provinces
+        self.log = [] # human-readable summary
     def tryResolveSimple(self):
         somethingWorked = True
         while somethingWorked:
@@ -295,16 +300,25 @@ class MovementTurn:
             if order.support:
                 self.battles[ order.supportDestination.province.name ].addSupport( order )
 
+
+def formatProvinceNameList( board, shortnames ):
+    longnames = list( map( lambda x : board.provinces[ x ].displayName, shortnames ) )
+    lastLongName = longnames.pop()
+    if len( shortnames ) == 1:
+        return lastLongName
+    return ", ".join( longnames ) + " and " + lastLongName
+
 class Battle:
     def __init__(self, turn, province):
         self.turn = turn
         self.name = province.name
         self.province = province
         self.attackers = {}
-        self.defenders = Force( self.name, doAdd = False )
+        self.defenders = Force( self.name )
         self.convoyFrom = None
         self.convoyTo = None
         self.resolved = False
+        self.convoying = False
         self.defending = False # also means "supportable"
     def dependencies(self):
         rv = set()
@@ -315,6 +329,7 @@ class Battle:
             rv.add( dep )
         return rv
     def addConvoy(self, order):
+        self.convoying = True
         self.convoyFrom = order.convoySource.province.name
         self.convoyTo = order.convoyDestination.province.name
     def addMove(self, order):
@@ -326,17 +341,16 @@ class Battle:
         # we do NOT set the defending flag!
         assert self.province == order.destination.province
         name = order.source.province.name
-        if order.source == order.destination:
-            raise "foo"
-        defDep = Dependency( provinces = [ self ], f = lambda : not self.beingDislodged() )
+        defDep = Dependency( name = name, provinces = [ self ], f = lambda : not self.beingDislodged() )
         self.turn.battles[ order.source.province.name ].defenders.add( defDep )
-        condition = always
+        condition = Dependency( name = name, provinces = [], f = lambda : True )
         if order.byConvoy:
             condition = self.turn.battles[ name ].makeConvoyedDependency( self.province )
-        self.attackers[ name ] = Force( name, condition )
+        self.attackers[ name ] = Force( name )
+        self.attackers[ name ].add( condition )
     def addHold(self):
         # if holding, defender on source, unconditional
-        self.defenders.add()
+        self.defenders.add( Dependency( name = self.name, provinces = [], f = lambda : True ) )
         self.defending = True
     def addSupport(self, order):
         # if supporting, support on support destination
@@ -355,21 +369,61 @@ class Battle:
         if self.resolved:
             return False
         try:
+            bestAttacker = None
+            success = False
             if self.beingDislodged():
                 # strongest attacker succeeds
-                name, attacker = max( self.attackers.items(), key = lambda ab : ab[1].strength() )
+                name, bestAttacker = max( self.attackers.items(), key = lambda ab : ab[1].strength() )
                 self.turn.movement.append( (name, self.name) )
                 if self.defenders.strength() > 0:
                     self.turn.retreats.append( self.name )
-                print( "In", self.name, "attack succeeds", self.defenders.strength() )
+                success = True
             else:
                 # nothing moves
-                print( "In", self.name, "attack fails", self.defenders.strength() )
                 pass
-            if self.defenders.strength() > 0 and len( self.attackers ):
-                print( "resolved", self.name, self.defenders.strength() )
-                for name, force in self.attackers.items():
-                    print( "attacker", name, force.strength() )
+#            if self.defenders.strength() > 0 and len( self.attackers ):
+ #               print( "resolved", self.name, self.defenders.strength() )
+  #              for name, force in self.attackers.items():
+   #                 print( "attacker", name, force.strength() )
+            if len( self.attackers ) > 0:
+                logentry = []
+                logentry.append( "{province} is being".format( province = self.province.displayName ) )
+                if self.defenders.strength() > 0:
+                    logentry.append( "defended by {unitType} with strength {defStr} ({defList}), and".format(
+                            unitType = definiteUnit( self.turn.board.provinces[ self.name ].unit() ),
+                        defStr = self.defenders.strength(),
+                        defList = formatProvinceNameList( self.turn.board, self.defenders.supporterNames ) ) )
+                attackerDescs = []
+                for name, attacker in self.attackers.items():
+                    try:
+                        s = "{unitType} with strength {attStr} from {attacker} ({attList})".format(
+                            unitType = definiteUnit( self.turn.board.provinces[ name ].unit() ),
+                            attStr = attacker.strength(),
+                            attList = formatProvinceNameList( self.turn.board, attacker.supporterNames ),
+                            attacker = self.turn.board.provinces[ name ].displayName )
+                    except UndeterminedException:
+                        s = "{unitType} from {attacker}".format(
+                            unitType = definiteUnit( self.turn.board.provinces[ name ].unit() ),
+                            attacker = self.turn.board.provinces[ name ].displayName )
+                    attackerDescs.append( s )
+                if len( self.attackers ) == 1:
+                    attackersDesc = attackerDescs[0]
+                else:
+                    lastAttackerDesc = attackerDescs.pop()
+                    attackersDesc = ", ".join( attackerDescs )  + " and " + lastAttackerDesc
+                logentry.append( "attacked by {attackersDesc}.".format( attackersDesc = attackersDesc ) )
+                # room for improvement: describe bounces
+                if success:
+                    logentry.append( "The {unitType} from {baName} moves into {province}.".format(
+                        unitType = self.turn.board.provinces[ name ].unit(),
+                        baName = self.turn.board.provinces[ bestAttacker.name ].displayName,
+                        province = self.province.displayName ) )
+                    if self.convoying:
+                        logentry.append( "The fleet in {province} is dislodged and cannot convoy.".format( province = self.province.displayName ) )
+                else:
+                    logentry.append( "The defenders hold {province}.".format(
+                        province = self.province.displayName ) )
+                self.turn.log.append( " ".join( logentry ) )
             self.resolved = True
             return True
         except UndeterminedException:
@@ -392,8 +446,6 @@ class Battle:
             strength = attacker.strength()
             if strength > defense:
                 atts[ attacker.name ] = strength
-            if defense == 0:
-                return True
         while atts:
             bestVal = max( atts.values() )
             bestVals = list( filter( lambda ab : ab[1] == bestVal, atts.items() ) )
@@ -439,7 +491,7 @@ class Battle:
             #     A Gas-Bre
             #  Result should be Gascony moving into Brest, not standoff with Paris.
             return not self.beingDislodged()
-        return Dependency( provinces = [self], f = f )
+        return Dependency( name = self.name, provinces = [self], f = f )
     def makeConvoyedDependency(self, towards):
         todo = []
         def willConvoy( link ):
@@ -468,7 +520,7 @@ class Battle:
                 if link.province == towards:
                     reachable = True
         if not reachable:
-            return Dependency( provinces = [], f = lambda : False )
+            return Dependency( name = self.name, provinces = [], f = lambda : False )
         dependencies = []
         for node in done:
             if willConvoy( node ):
@@ -519,7 +571,7 @@ class Battle:
             if goodReach:
                 return True
             raise UndeterminedException()
-        return Dependency( provinces = dependencies, f = canReach )
+        return Dependency( name = self.name, provinces = dependencies, f = canReach )
 
 # How to resolve the "complicated" cases?
 # For convoys: a convoyed army in a cycle cannot cut support
@@ -533,7 +585,6 @@ class Battle:
 
 
 # TODO
-#  - generate plaintext summary of adjudication
 #  - check support is correct
 #  - head on collisions, 
 #  - movement cycles, "all or none"
@@ -596,6 +647,9 @@ if __name__ == '__main__':
     for battle in unresolvedBattles:
         print( "Unresolved:", battle.province.displayName )
     if not unresolvedBattles:
+        print()
+        for logentry in turn.log:
+            print( logentry )
         print()
         moves, retreats =  0, 0
         for alpha, omega in turn.movement:
