@@ -87,13 +87,24 @@ class Province:
     def makeSupply(self):
         self.supplyCenter = True
         return self
+    def waternode(self):
+        # Note: gives a WRONG result for inland provinces.
+        # gives no result if a coast must be specified.
+        try:
+            return self.coast()
+        except KeyError:
+            return self.main
     def addCoast(self, name = None):
-        self.coasts[ _CaseInsensitiveString( name ) ] = GraphNode( self, name )
+        if name:
+            name = _CaseInsensitiveString( name ) 
+        self.coasts[ name ] = GraphNode( self, name )
         return self
     def setOwner( self, nation ):
         self.owner = nation
     def coast(self, name = None):
-        return self.coasts[ _CaseInsensitiveString( name ) ]
+        if name:
+            name = _CaseInsensitiveString( name ) 
+        return self.coasts[ name ]
     def setUnit( self, nation, unit ):
         self.main.setUnit( nation, unit )
     def neighbours(self):
@@ -144,7 +155,10 @@ class Province:
                     raise InvalidState()
             except IndexError:
                 if unit == 'fleet':
-                    node = node.province.coast()
+                    try:
+                        node = node.province.coast()
+                    except KeyError:
+                        pass #inelegant way of handling oceans
             node.unit = unit
         except IndexError:
             raise InvalidState()
@@ -219,6 +233,6 @@ class Board:
         if (not selectCoastal) or (not province.coasts):
             return province.main
         try:
-            return province.coasts[ _CaseInsensitiveString( nodename ) ]
+            return province.coast( nodename )
         except KeyError:
             return None

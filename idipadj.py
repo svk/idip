@@ -115,11 +115,15 @@ def interpretPair( board, s, selectCoastal, noHold = False):
         if last.upper() == "HOLDS" or last.upper() == "HOLD":
             # Note: this is a bit too tolerant for DATC 6a4
             last = first
-    first = board.nodeByShortname( first, selectCoastal )
-    last = board.nodeByShortname( last, selectCoastal )
-    if (first == None) or (last == None):
+    first_ = board.nodeByShortname( first, selectCoastal )
+    last_ = board.nodeByShortname( last, selectCoastal )
+    if (first_ == None) or (last_ == None):
+        if first_ == None:
+            print( "Unable to resolve", first )
+        if last_ == None:
+            print( "Unable to resolve", last )
         return None
-    return first, last
+    return first_, last_
 
 def interpretMovementOrder( board, s ):
     # TODO:
@@ -165,8 +169,7 @@ def interpretMovementOrder( board, s ):
         if unitType == None:
             return None
         selectCoastal = unitType == 'fleet'
-        if selectCoastal:
-            source = source.province.coast()
+        source = board.nodeByShortname( tokens[0], selectCoastal )
     tokens.pop(0)
     if not tokens: return None
     moveType = tokens[0]
@@ -489,7 +492,6 @@ class Battle:
                     visited.add( outlink )
             if goodReach:
                 return True
-            print ("CANNOT goodreach")
             raise UndeterminedException()
         return Dependency( provinces = dependencies, f = canReach )
 
@@ -538,7 +540,7 @@ if __name__ == '__main__':
                 print( lastInput )
             else:
                 order = interpretMovementOrder( board, lastInput )
-                print( order )
+                print( "Order:", order)
                 if order.illegality():
                     print( "ignoring illegal move:", order.illegality() )
                     order.makeHold()
