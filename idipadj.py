@@ -305,7 +305,7 @@ class Battle:
         self.convoyFrom = None
         self.convoyTo = None
         self.resolved = False
-        self.defending = False
+        self.defending = False # also means "supportable"
     def dependencies(self):
         rv = set()
         for force in self.attackers.values():
@@ -315,16 +315,21 @@ class Battle:
             rv.add( dep )
         return rv
     def addConvoy(self, order):
-        self.defenders.add()
         self.convoyFrom = order.convoySource.province.name
         self.convoyTo = order.convoyDestination.province.name
     def addMove(self, order):
         # if moving, attacker on destination
         # convoyed moves must be added _after_ convoys
-        # XXX moving should also add a conditional hold in source, dependent on
-        #  the attack not succeeding
+        # moving should also add a conditional hold in source, dependent on
+        #  the attack not succeeding.
+        # done. HOWEVER - this is not supportable, because the unit did not actually hold.
+        # we do NOT set the defending flag!
         assert self.province == order.destination.province
         name = order.source.province.name
+        if order.source == order.destination:
+            raise "foo"
+        defDep = Dependency( provinces = [ self ], f = lambda : not self.beingDislodged() )
+        self.turn.battles[ order.source.province.name ].defenders.add( defDep )
         condition = always
         if order.byConvoy:
             condition = self.turn.battles[ name ].makeConvoyedDependency( self.province )
@@ -356,8 +361,10 @@ class Battle:
                 self.turn.movement.append( (name, self.name) )
                 if self.defenders.strength() > 0:
                     self.turn.retreats.append( self.name )
+                print( "In", self.name, "attack succeeds", self.defenders.strength() )
             else:
                 # nothing moves
+                print( "In", self.name, "attack fails", self.defenders.strength() )
                 pass
             if self.defenders.strength() > 0 and len( self.attackers ):
                 print( "resolved", self.name, self.defenders.strength() )
@@ -385,6 +392,8 @@ class Battle:
             strength = attacker.strength()
             if strength > defense:
                 atts[ attacker.name ] = strength
+            if defense == 0:
+                return True
         while atts:
             bestVal = max( atts.values() )
             bestVals = list( filter( lambda ab : ab[1] == bestVal, atts.items() ) )
