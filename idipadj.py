@@ -100,6 +100,8 @@ class MovementOrder:
                     return "fleets not in place for convoy"
                 return "convoy between provinces not adjacent to the same ocean"
         return ""
+    def nationality(self):
+        return self.source.owner
 
 def interpretPair( board, s, selectCoastal, noHold = False):
     if "--" in s:
@@ -263,18 +265,33 @@ class MovementTurn:
                     somethingWorked = True
     def unresolved(self):
         return filter( lambda x: not x.resolved, self.battles.values() )
-    def addOrders(self, orders):
-        orders = list( orders )
-        # First pass: convoy orders, to source
+    def preprocessOrders(self, orders):
+        # assumed: these orders have been checked for legality and access control (nationality)
+        byprov = {}
+        for x in [province.name for province in self.board.provinces if province.unitnode() != None ]:
+            byprov[x] = None
         for order in orders:
+            byprov[ order.source.province.name ] = order
+        for name, order in byprov.items():
+            if order == None:
+                p = self.board.provinces[name].unitnode()
+                byprov[ name ] = MovementOrder( source = p, destination = p )
+        return byprov
+    def addOrders(self, byprov):
+        # First pass: convoy orders, to source
+        for order in byprov.values():
             if order.convoy:
                 self.battles[ order.source.province.name ].addConvoy( order )
         # Second pass: movement orders, to destination
-        for order in orders:
-            if not (order.support or order.convoy):
+        for order in byprov.values():
+            if order.source != order.destination:
                 self.battles[ order.destination.province.name ].addMove( order )
+            else:
+                # anything that doesn't move implicitly holds - even things that are supporting,
+                # convoying, etc.
+                self.battles[ order.destination.province.name ].addHold()
         # Third pass: support orders, to support destination
-        for order in orders:
+        for order in byprov.values():
             if order.support:
                 self.battles[ order.supportDestination.province.name ].addSupport( order )
 
@@ -548,17 +565,18 @@ if __name__ == '__main__':
     except EOFError:
         pass
     turn = MovementTurn( board )
-    turn.addOrders( orders )
+    byprov = turn.preprocessOrders( orders )
+    turn.addOrders( byprov )
     print()
 
     print( "Attempting to resolve." )
 
     turn.tryResolveSimple()
 
-    unresolvedProvinces = list( turn.unresolved() )
-    for province in unresolvedProvinces:
-        print( "Unresolved:", province.displayName )
-    if not unresolvedProvinces:
+    unresolvedBattles = list( turn.unresolved() )
+    for battle in unresolvedBattles:
+        print( "Unresolved:", battle.province.displayName )
+    if not unresolvedBattles:
         print()
         moves, retreats =  0, 0
         for alpha, omega in turn.movement:

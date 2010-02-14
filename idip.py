@@ -113,6 +113,13 @@ class Province:
             for n in coast.links:
                 rv.append( n.province )
         return set(rv)
+    def unitnode(self):
+        if self.main.unit:
+            return self.main
+        for name,coast in self.coasts.items():
+            if coast.unit:
+                return coast
+        return None
     def unitCoast(self):
         for name,coast in self.coasts.items():
             if coast.unit:
