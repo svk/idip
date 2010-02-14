@@ -531,6 +531,16 @@ class Battle:
 # Rule 22: This should succeed automatically; there is no cycle
 #          if there is at least one guaranteed successful route.
 
+
+# TODO
+#  - generate plaintext summary of adjudication
+#  - check support is correct
+#  - head on collisions, 
+#  - movement cycles, "all or none"
+#  - convoy paradox handling
+#  - generate next state, & implement build & retreat orders
+
+
         
         
 if __name__ == '__main__':
