@@ -9,6 +9,7 @@
 #    A Mun-Sil
 # Patterns for 
 
+
 class Token:
     def __init__(self, kind, argument = None, discard = False):
         self.kind = kind
@@ -23,27 +24,36 @@ class Parser:
     def add(self, phrase, token):
         self.words[ phrase.upper() ] = token
     def scan(self, string):
-        rv = None
         if not string:
-            return []
-        for i in range( 1, len( string ) + 1):
+            yield []
+        for i in range( len( string ), 0, -1):
             prefix = string[:i]
             suffix = string[i:]
             try:
                 token = self.words[ prefix.upper() ]
             except KeyError:
                 continue
-            suffixTokens = self.scan( suffix )
-            if suffixTokens == None:
+            suffixAlternatives = self.scan( suffix )
+            if not suffixAlternatives:
                 continue
-            # stop if rv here to eliminate ambiguity
-            # this way resolves in favour of longer tokens
-            if not token.discard:
-                rv = [token] + suffixTokens
-            else:
-                rv = suffixTokens
+            for suffixAlternative in suffixAlternatives:
+                if not token.discard:
+                    yield [token] + suffixAlternative
+                else:
+                    yield suffixAlternative
+        raise StopIteration
+    def firstParse(self, string):
+        rv = None
+        for rv in self.scan( string ):
+            break
         return rv
-        
+    def uniqueParse(self, string):
+        rv = None
+        for x in self.scan( string ):
+            if rv:
+                return None
+            rv = x
+        return rv
 
 class DiplomacyParser (Parser):
     def __init__(self, board):
@@ -73,6 +83,8 @@ class DiplomacyParser (Parser):
         self.add( " ", Token( 'blank', discard = True ) )
         self.add( "A", Token( 'unit', 'army' ) )
         self.add( "F", Token( 'unit', 'fleet' ) )
+        self.add( "army", Token( 'unit', 'army' ) )
+        self.add( "fleet", Token( 'unit', 'fleet' ) )
         self.add( "C", Token( 'order', 'convoy' ) )
         self.add( "convoys", Token( 'order', 'convoy' ) )
         self.add( "convoy", Token( 'order', 'convoy' ) )
@@ -87,6 +99,7 @@ class DiplomacyParser (Parser):
         self.add( "disbands", Token( 'order', 'disband' ) )
         self.add( "destroy", Token( 'order', 'disband' ) )
         self.add( "destroyed", Token( 'order', 'disband' ) )
+        self.add( "cha", Token( 'xxx', 'zzz' ) )
         self.addBracketed( "convoyed", Token( 'order', 'convoyed' ) )
         self.addBracketed( "by convoy", Token( 'order', 'convoyed' ) )
         self.addStandardCoastSynonyms()
@@ -119,9 +132,25 @@ if __name__ == '__main__':
     while True:
         lastInput = input().strip()
         print( repr( lastInput ) )
-        result = parser.scan( lastInput )
-        if result:
+        results = parser.scan( lastInput )
+        for result in results:
+            print( "PARSE" )
             for token in result:
-                print( str(token) )
+                print( "\t", str(token) )
+            print()
+        print( "FIRST-PARSE" )
+        result = parser.firstParse( lastInput )
+        if not result:
+            print( result )
         else:
-            print( "no parse" )
+            for token in result:
+                print( "\t", str(token) )
+        print()
+        print( "UNIQUE-PARSE" )
+        result = parser.uniqueParse( lastInput )
+        if not result:
+            print( result )
+        else:
+            for token in result:
+                print( "\t", str(token) )
+        print()

@@ -200,6 +200,8 @@ class Nation:
             return " ".join( [ "an", self.adjective ] )
         else:
             return " ".join( [ "a", self.adjective ] )
+    def __str__(self):
+        return self.displayName
 
 class Board:
     def __init__(self):
