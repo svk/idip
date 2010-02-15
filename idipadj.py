@@ -684,7 +684,33 @@ class Battle:
             for battle in battles:
                 battle.defenders.replaceCondition( battle.name, lambda : False )
         if len( cycle ) == 2 and not (cycle[0].moveConvoyed or cycle[0].moveConvoyed):
+            # head-on collision - both defenders stand (one doesn't matter),
+            # remove weakest attacker
+            # friendliness does not matter in strength comparison (?)
             resolveCycleFail( cycle )
+            alpha, beta = cycle
+            alphaAttacker = beta.attackers[ alpha.province.name ]
+            betaAttacker = alpha.attackers[ beta.province.name ]
+            logentry = []
+            logentry.append( "{alpha} and {beta} clash on the border between {alphaProvince} and {betaProvince}.".format(
+                alpha = capitalizeFirst( alpha.province.indefiniteUnit() ),
+                beta = beta.province.indefiniteUnit(),
+                alphaProvince = alpha.province.displayName,
+                betaProvince = beta.province.displayName,
+            ) )
+            if alphaAttacker.strength() > betaAttacker.strength():
+                logentry.append( "The attack from {betaProvince} is repelled.".format(
+                    alphaProvince = alpha.province.displayName,
+                    betaProvince = alpha.province.displayName,
+                ) )
+                del alpha.attackers[ beta.province.name ]
+            elif betaAttacker.strength() > alphaAttacker.strength():
+                logentry.append( "The attack from {alphaProvince} is repelled.".format(
+                    alphaProvince = alpha.province.displayName,
+                    betaProvince = alpha.province.displayName,
+                ) )
+                del beta.attackers[ alpha.province.name ]
+            self.turn.log.append( " ".join( logentry ) )
         else:
             prev = cycle[-1].province.name
             success = True

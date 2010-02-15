@@ -81,6 +81,8 @@ class Province:
         self.main.link( province.main )
     def node(self):
         return self.main
+    def indefiniteUnit(self):
+        return self.owner.definiteAdjective() + " " + self.unit()
     def linkMultiple(self, links):
         for link_ in links:
             self.link( link_ )
