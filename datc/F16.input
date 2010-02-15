@@ -1,0 +1,15 @@
+Lon England F
+Wal England F
+Bre France A
+ENG France F
+NTH Germany F
+Bel Germany F
+
+Lon S Wal-ENG
+Wal-ENG
+Bre-Lon (convoyed)
+ENG C Bre-Lon
+NTH S Bel-ENG
+Bel-ENG
+# Pandin's Paradox
+# Correct result: no units move
