@@ -21,17 +21,16 @@ class Parser:
     def __init__(self):
         self.words = {}
     def add(self, phrase, token):
-        self.words[ phrase.strip().upper() ] = token
+        self.words[ phrase.upper() ] = token
     def scan(self, string):
         rv = None
         if not string:
             return []
         for i in range( 1, len( string ) + 1):
             prefix = string[:i]
-            suffix = string[i+1:]
+            suffix = string[i:]
             try:
                 token = self.words[ prefix.upper() ]
-                print( "matched '{pr}'".format( pr= prefix), token )
             except KeyError:
                 continue
             suffixTokens = self.scan( suffix )
@@ -66,6 +65,7 @@ class DiplomacyParser (Parser):
         for nation in self.board.nations:
             token = Token( 'nation', nation )
             self.add( nation.name, token )
+            self.add( nation.adjective, token )
         self.add( "-", Token( 'separator' ) )
         self.add( "--", Token( 'separator' ) )
         self.add( "to", Token( 'separator' ) )
