@@ -1,4 +1,13 @@
 
+# way forwar:
+#  I like this parser principle and may well be using it
+#  in the IRC bot. For that it'll need a few things:
+#    - another subclass focusing not so much on semi-NLP
+#      but on exact orders
+#    - tokens that can glob text, notably such things as
+#      () and [] and such - glob anything except things
+#      ending in unquoted closing braces
+
 # Long or short names can be used interchangeably.
 # All army/fleet prefixes are optional.
 # Patterns for hold orders:
