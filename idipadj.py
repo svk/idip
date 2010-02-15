@@ -4,6 +4,9 @@ def definiteUnit( unit ):
         'army': 'an army',
     }[ unit ]
 
+def capitalizeFirst( s ):
+    return s[0].upper() + s[1:]
+
 # basic operation:
 # battle( attackers: dict : name(str) -> (strength(int), hostileStrength(int), friendly(bool) ), defenders: int )
 # return None if defenders win
@@ -16,7 +19,7 @@ def diplomacyFight( attackers, defender ):
     winner = None
     strongest = defender
     weaker = defender
-    for name, strengths in attackers:
+    for name, strengths in attackers.items():
         strength, hostileStrength, friendly = strengths
         if strength > strongest:
             winner = name
@@ -26,6 +29,8 @@ def diplomacyFight( attackers, defender ):
             winner = None
     if winner:
         strength, hostileStrength, friendly = attackers[ winner ]
+        if defender == 0:
+            return winner # even friendly armies can move about internally
         if friendly:
             return None
         if hostileStrength > weaker:
@@ -369,7 +374,7 @@ class Battle:
         # we do NOT set the defending flag!
         assert self.province == order.destination.province
         name = order.source.province.name
-        defDep = Dependency( name = name, provinces = [ self ], f = lambda : not self.beingDislodged() )
+        defDep = Dependency( name = name, provinces = [ self ], f = lambda : self.fight() != name )
         self.turn.battles[ order.source.province.name ].defenders.add( defDep )
         condition = Dependency( name = name, provinces = [], f = lambda : True )
         if order.byConvoy:
@@ -394,13 +399,25 @@ class Battle:
             side.add( condition )
         except KeyError:
             pass # support order failed; no such attack/hold
+    def fight(self):
+        defenderNation = self.turn.board.provinces[ self.name ].owner
+        a = {}
+        for name, attacker in self.attackers.items():
+            strength = attacker.strength()
+            hostileStrength = 0
+            friendly = self.turn.board.provinces[ name ].owner == defenderNation
+            for supporter in attacker.supporterNames:
+                if self.turn.board.provinces[ supporter ].owner != defenderNation:
+                    hostileStrength += 1
+            a[ name ] = (strength, hostileStrength, friendly )
+        return diplomacyFight( a, self.defenders.strength() )
     def tryResolveSimple(self):
         if self.resolved:
             return False
         try:
             bestAttacker = None
             success = False
-            if self.beingDislodged():
+            if self.fight() != None:
                 # strongest attacker succeeds
                 name, bestAttacker = max( self.attackers.items(), key = lambda ab : ab[1].strength() )
                 self.turn.movement.append( (name, self.name) )
@@ -412,42 +429,68 @@ class Battle:
                 pass
             if len( self.attackers ) > 0:
                 logentry = []
-                logentry.append( "{province} is being".format( province = self.province.displayName ) )
+                didNameProvince = False
+                defendingOwner = None
                 if self.defenders.strength() > 0:
-                    logentry.append( "defended by {unitType} with strength {defStr} ({defList}), and".format(
-                            unitType = definiteUnit( self.turn.board.provinces[ self.name ].unit() ),
+                    owner = self.turn.board.provinces[ self.name ].owner
+                    defendingOwner = owner
+                    didNameProvince = True
+                    logentry.append( "{province} is being defended by {definiteNationality} {unitType} with strength {defStr} ({defList}).".format(
+                        province = self.province.displayName,
+                        definiteNationality = owner.definiteAdjective(),
+                        unitType = self.turn.board.provinces[ self.name ].unit(),
                         defStr = self.defenders.strength(),
                         defList = formatProvinceNameList( self.turn.board, self.defenders.supporterNames ) ) )
                 attackerDescs = []
+                cheekiness = False
                 for name, attacker in self.attackers.items():
+                    owner = self.turn.board.provinces[ name ].owner
+                    if owner != defendingOwner:
+                        cheekiness = True
                     try:
-                        s = "{unitType} with strength {attStr} from {attacker} ({attList})".format(
-                            unitType = definiteUnit( self.turn.board.provinces[ name ].unit() ),
+                        s = "{definiteNationality} {unitType} with strength {attStr} from {attacker} ({attList})".format(
+                            definiteNationality = owner.definiteAdjective(),
+                            unitType = self.turn.board.provinces[ name ].unit(),
                             attStr = attacker.strength(),
                             attList = formatProvinceNameList( self.turn.board, attacker.supporterNames ),
                             attacker = self.turn.board.provinces[ name ].displayName )
                     except UndeterminedException:
-                        s = "{unitType} from {attacker}".format(
-                            unitType = definiteUnit( self.turn.board.provinces[ name ].unit() ),
+                        s = "{definiteNationality} {unitType} from {attacker}".format(
+                            definiteNationality = owner.definiteAdjective(),
+                            unitType = self.turn.board.provinces[ name ].unit(),
                             attacker = self.turn.board.provinces[ name ].displayName )
+                    if not attackerDescs:
+                        s = s[0].upper() + s[1:]
                     attackerDescs.append( s )
                 if len( self.attackers ) == 1:
-                    attackersDesc = attackerDescs[0]
+                    attackersDesc = attackerDescs[0] + " is"
                 else:
                     lastAttackerDesc = attackerDescs.pop()
-                    attackersDesc = ", ".join( attackerDescs )  + " and " + lastAttackerDesc
-                logentry.append( "attacked by {attackersDesc}.".format( attackersDesc = attackersDesc ) )
+                    attackersDesc = ", ".join( attackerDescs )  + " and " + lastAttackerDesc + " are"
+                logentry.append( "{attackersDesc} moving into".format( attackersDesc = attackersDesc ) )
+                if didNameProvince:
+                    logentry.append( "it." )
+                else:
+                    logentry.append( "{province}.".format( province = self.province.displayName ) )
                 # room for improvement: describe bounces
                 if success:
                     logentry.append( "The {unitType} from {baName} moves into {province}.".format(
-                        unitType = self.turn.board.provinces[ name ].unit(),
+                        unitType = self.turn.board.provinces[ bestAttacker.name ].unit(),
                         baName = self.turn.board.provinces[ bestAttacker.name ].displayName,
                         province = self.province.displayName ) )
                     if self.convoying:
                         logentry.append( "The fleet in {province} is dislodged and cannot convoy.".format( province = self.province.displayName ) )
                 else:
-                    logentry.append( "The defenders hold {province}.".format(
-                        province = self.province.displayName ) )
+                    if cheekiness and self.defenders.strength() > 0:
+                        logentry.append( "The defenders hold {province}.".format(
+                            province = self.province.displayName ) )
+                    elif cheekiness:
+                        logentry.append( "The units clash and none of them enter {province}.".format( province = self.province.displayName ) )
+                    else:
+                        if len( self.attackers ) > 1:
+                            logentry.append( "None of the units can enter {province}.".format( province = self.province.displayName ) )
+                        else:
+                            logentry.append( "It cannot enter {province}.".format( province = self.province.displayName ) )
                 self.turn.log.append( " ".join( logentry ) )
             self.resolved = True
             return True
