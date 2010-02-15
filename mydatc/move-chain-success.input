@@ -1,0 +1,8 @@
+Lon England A
+Yor England A
+Edi England A
+
+Lon-Yor
+Yor-Edi
+Edi-Cly
+# All three moves should succeed.

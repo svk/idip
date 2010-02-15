@@ -1,0 +1,9 @@
+Lon England A
+Yor England A
+Wal England A
+
+Lon-Yor
+Yor-Wal
+Wal-Lon
+#All three moves should succeed
+

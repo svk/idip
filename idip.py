@@ -82,6 +82,8 @@ class Province:
         self.main.link( province.main )
     def node(self):
         return self.main
+    def indefiniteUnit(self):
+        return self.owner.indefiniteAdjective() + " " + self.unit()
     def linkMultiple(self, links):
         for link_ in links:
             self.link( link_ )
@@ -178,15 +180,26 @@ class Province:
         return False
 
 class Nation:
-    def __init__(self, name, displayName = None):
+    def __init__(self, name, displayName = None, adjective = None, forceDefiniteArticle = None):
         self.name = name
         if not displayName:
             self.displayName = self.name
         else:
             self.displayName = displayName
+        if not adjective:
+            self.adjective = self.displayName
+        else:
+            self.adjective = adjective
+        self.forceDefiniteArticle = None
         self.homeProvinces = set()
     def addHome(self, province):
         self.homeProvinces.add( province )
+    def indefiniteAdjective(self):
+        vowels = "aeiou"
+        if self.adjective[0].lower() in vowels:
+            return " ".join( [ "an", self.adjective ] )
+        else:
+            return " ".join( [ "a", self.adjective ] )
 
 class Board:
     def __init__(self):

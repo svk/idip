@@ -3,13 +3,13 @@ from idip import Board, Nation, Province
 def createStandardBoard():
     board = Board()
     
-    board.addNation( Nation( "France" ) )
-    board.addNation( Nation( "England" ) )
-    board.addNation( Nation( "Germany" ) )
-    board.addNation( Nation( "Russia" ) )
-    board.addNation( Nation( "Austria" ) )
-    board.addNation( Nation( "Turkey" ) )
-    board.addNation( Nation( "Italy" ) )
+    board.addNation( Nation( "France", adjective = "French" ) )
+    board.addNation( Nation( "England", adjective = "English" ) )
+    board.addNation( Nation( "Germany", adjective = "German" ) )
+    board.addNation( Nation( "Russia", adjective = "Russian" ) )
+    board.addNation( Nation( "Austria", adjective = "Austrian" ) )
+    board.addNation( Nation( "Turkey", adjective = "Turkish" ) )
+    board.addNation( Nation( "Italy", adjective = "Italian" ) )
 
     provinces = [
             # Africa
