@@ -82,7 +82,7 @@ class Province:
     def node(self):
         return self.main
     def indefiniteUnit(self):
-        return self.owner.definiteAdjective() + " " + self.unit()
+        return self.owner.indefiniteAdjective() + " " + self.unit()
     def linkMultiple(self, links):
         for link_ in links:
             self.link( link_ )
@@ -193,7 +193,7 @@ class Nation:
         self.homeProvinces = set()
     def addHome(self, province):
         self.homeProvinces.add( province )
-    def definiteAdjective(self):
+    def indefiniteAdjective(self):
         vowels = "aeiou"
         if self.adjective[0].lower() in vowels:
             return " ".join( [ "an", self.adjective ] )

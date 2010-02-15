@@ -1,4 +1,4 @@
-def definiteUnit( unit ):
+def indefiniteUnit( unit ):
     return {
         'fleet': 'a fleet',
         'army': 'an army',
@@ -456,9 +456,9 @@ class Battle:
                     owner = self.turn.board.provinces[ self.name ].owner
                     defendingOwner = owner
                     didNameProvince = True
-                    logentry.append( "{province} is being defended by {definiteNationality} {unitType} with strength {defStr} ({defList}).".format(
+                    logentry.append( "{province} is being defended by {indefiniteNationality} {unitType} with strength {defStr} ({defList}).".format(
                         province = self.province.displayName,
-                        definiteNationality = owner.definiteAdjective(),
+                        indefiniteNationality = owner.indefiniteAdjective(),
                         unitType = self.turn.board.provinces[ self.name ].unit(),
                         defStr = self.defenders.strength(),
                         defList = formatProvinceNameList( self.turn.board, self.defenders.supporterNames ) ) )
@@ -469,15 +469,15 @@ class Battle:
                     if owner != defendingOwner:
                         cheekiness = True
                     try:
-                        s = "{definiteNationality} {unitType} with strength {attStr} from {attacker} ({attList})".format(
-                            definiteNationality = owner.definiteAdjective(),
+                        s = "{indefiniteNationality} {unitType} with strength {attStr} from {attacker} ({attList})".format(
+                            indefiniteNationality = owner.indefiniteAdjective(),
                             unitType = self.turn.board.provinces[ name ].unit(),
                             attStr = attacker.strength(),
                             attList = formatProvinceNameList( self.turn.board, attacker.supporterNames ),
                             attacker = self.turn.board.provinces[ name ].displayName )
                     except UndeterminedException:
-                        s = "{definiteNationality} {unitType} from {attacker}".format(
-                            definiteNationality = owner.definiteAdjective(),
+                        s = "{indefiniteNationality} {unitType} from {attacker}".format(
+                            indefiniteNationality = owner.indefiniteAdjective(),
                             unitType = self.turn.board.provinces[ name ].unit(),
                             attacker = self.turn.board.provinces[ name ].displayName )
                     if not attackerDescs:
