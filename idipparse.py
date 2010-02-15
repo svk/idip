@@ -50,7 +50,6 @@ class Parser:
                     yield [token] + suffixAlternative
                 else:
                     yield suffixAlternative
-        raise StopIteration
     def firstParse(self, string):
         rv = None
         for rv in self.scan( string ):
