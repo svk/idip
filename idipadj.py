@@ -4,6 +4,34 @@ def definiteUnit( unit ):
         'army': 'an army',
     }[ unit ]
 
+# basic operation:
+# battle( attackers: dict : name(str) -> (strength(int), hostileStrength(int), friendly(bool) ), defenders: int )
+# return None if defenders win
+# return attacker's name if an attacker wins
+
+# (this could actually be used to resolve battles - with afterchecks
+# for a dislodging attacker supported by sympathetic forces
+
+def diplomacyFight( attackers, defender ):
+    winner = None
+    strongest = defender
+    weaker = defender
+    for name, strengths in attackers:
+        strength, hostileStrength, friendly = strengths
+        if strength > strongest:
+            winner = name
+            weaker = strongest
+            strongest = strength
+        elif strength == strongest:
+            winner = None
+    if winner:
+        strength, hostileStrength, friendly = attackers[ winner ]
+        if friendly:
+            return None
+        if hostileStrength > weaker:
+            return winner
+    return None
+
 class MovementOrder:
     def __init__(self, source,
                        destination = None,
@@ -355,6 +383,7 @@ class Battle:
     def addSupport(self, order):
         # if supporting, support on support destination
         # support orders must be added _after_ move/hold orders
+        # TODO: handle case where there is no supported attack/defense -- support fails
         if order.supportSource == order.supportDestination:
             side = self.defenders
         else:
@@ -381,10 +410,6 @@ class Battle:
             else:
                 # nothing moves
                 pass
-#            if self.defenders.strength() > 0 and len( self.attackers ):
- #               print( "resolved", self.name, self.defenders.strength() )
-  #              for name, force in self.attackers.items():
-   #                 print( "attacker", name, force.strength() )
             if len( self.attackers ) > 0:
                 logentry = []
                 logentry.append( "{province} is being".format( province = self.province.displayName ) )
@@ -572,6 +597,9 @@ class Battle:
                 return True
             raise UndeterminedException()
         return Dependency( name = self.name, provinces = dependencies, f = canReach )
+    def tryResolveMoveCycle(self):
+        # first let's determine if there really is a move cycle here.
+        pass
 
 # How to resolve the "complicated" cases?
 # For convoys: a convoyed army in a cycle cannot cut support
@@ -591,9 +619,23 @@ class Battle:
 #  - convoy paradox handling
 #  - generate next state, & implement build & retreat orders
 
+# strategy
+# assume paradoxes resolved and simple resolution performed
+# then (verify?) only move cycles remain
+# by the nature of cycles these are distinct
+# all external stuff is resolved (this is assumed)
+# if cycle of length two and neither of the moves are convoyed:
+#   fail : units retained as both attackers and defenders
+# else:
+#   get strength range for attackers and defenders on each vertex
+#   verify that range is 1 for defenders, 0 for attackers
+#   use the minimum values
+#   if ALL attackers succeed (not defended, bounced or beaten by external attackers):
+#     succeed : units retained as attackers only
+#   else:
+#     fail as above
+# resolve, should resolve everything
 
-        
-        
 if __name__ == '__main__':
     from idipmap import createStandardBoard
     board = createStandardBoard()
