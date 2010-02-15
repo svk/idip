@@ -1,0 +1,11 @@
+Lon England A
+Yor England A
+Wal England A
+Lvp England A
+
+Lon-Yor
+Yor-Wal
+Wal-Lon
+Lvp-Wal
+#All four moves should fail
+

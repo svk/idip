@@ -241,8 +241,17 @@ class Dependency:
         self.name = name
         self.provinces = provinces
         self.f = f
+        self.deciding = False
     def __call__(self):
-        return self.f()
+        # XXX not terribly threading friendly!
+        if self.deciding:
+            raise UndeterminedException()
+        self.deciding = True
+        try:
+            return self.f()
+        finally:
+            self.deciding = False
+        
 
 class Force:
     def __init__(self, name):
@@ -279,6 +288,10 @@ class Force:
             for dependency in supporter.provinces:
                 rv.add( dependency )
         return rv
+    def replaceCondition(self, name, newCondition):
+        for depsup in self.dependentSupporters:
+            if depsup.name == name:
+                depsup.f = newCondition
 
 # a move order (no convoy): certain (check: move cycles)
 # a support order: support dependent on no attack to supporter from flank
@@ -301,6 +314,10 @@ class MovementTurn:
             for battle in self.unresolved():
                 if battle.tryResolveSimple():
                     somethingWorked = True
+    def tryResolveMoveCycles(self):
+        for battle in self.unresolved():
+            battle.tryResolveMoveCycle()
+        self.tryResolveSimple()
     def unresolved(self):
         return filter( lambda x: not x.resolved, self.battles.values() )
     def preprocessOrders(self, orders):
@@ -350,8 +367,10 @@ class Battle:
         self.defenders = Force( self.name )
         self.convoyFrom = None
         self.convoyTo = None
+        self.moveTo = None
         self.resolved = False
         self.convoying = False
+        self.moveCycleResolved = False
         self.defending = False # also means "supportable"
     def dependencies(self):
         rv = set()
@@ -376,6 +395,8 @@ class Battle:
         name = order.source.province.name
         defDep = Dependency( name = name, provinces = [ self ], f = lambda : self.fight() != name )
         self.turn.battles[ order.source.province.name ].defenders.add( defDep )
+        self.turn.battles[ order.source.province.name ].moveTo = self
+        self.turn.battles[ order.source.province.name ].moveConvoyed = order.byConvoy
         condition = Dependency( name = name, provinces = [], f = lambda : True )
         if order.byConvoy:
             condition = self.turn.battles[ name ].makeConvoyedDependency( self.province )
@@ -642,7 +663,53 @@ class Battle:
         return Dependency( name = self.name, provinces = dependencies, f = canReach )
     def tryResolveMoveCycle(self):
         # first let's determine if there really is a move cycle here.
-        pass
+        # note that it's not enough that we eventually reach a move cycle
+        if self.resolved or self.moveCycleResolved:
+            return False
+        cycle = [ self ]
+        while True:
+            next = cycle[-1].moveTo
+            if next == None:
+                return False # no cycle
+            if next == self:
+                break
+            if next in cycle:
+                return False # cycle starts elsewhere
+            cycle.append( next )
+        # so there is.
+        def resolveCycleFail( battles ):
+            for battle in battles:
+                battle.defenders.replaceCondition( battle.name, lambda : True )
+        def resolveCycleSucceed( battles ):
+            for battle in battles:
+                battle.defenders.replaceCondition( battle.name, lambda : False )
+        if len( cycle ) == 2 and not (cycle[0].moveConvoyed or cycle[0].moveConvoyed):
+            resolveCycleFail( cycle )
+        else:
+            prev = cycle[-1].province.name
+            success = True
+            for elt in cycle:
+                df = 0
+                a = {}
+                for name, attacker in elt.attackers.items():
+                    s = attacker.strength()
+                    hs = s # XXX
+                    f = True # XXX
+                    a[ attacker.name ] = s, hs, f
+                df = self.defenders.minimum()
+                if (df+1) != self.defenders.maximum():
+                    assert False # raise stop
+                if diplomacyFight( a, df ) != prev:
+                    success = False
+                prev = elt.province.name
+            if success:
+                resolveCycleSucceed( cycle )
+            else:
+                resolveCycleFail( cycle )
+        for battle in cycle:
+            battle.moveCycleResolved = True
+        return True
+                
 
 # How to resolve the "complicated" cases?
 # For convoys: a convoyed army in a cycle cannot cut support
@@ -727,6 +794,10 @@ if __name__ == '__main__':
     print( "Attempting to resolve." )
 
     turn.tryResolveSimple()
+
+    print( "Resolving move cycles, {n} left.".format( n = len( list( turn.unresolved() ) ) ) )
+
+    turn.tryResolveMoveCycles()
 
     unresolvedBattles = list( turn.unresolved() )
     for battle in unresolvedBattles:

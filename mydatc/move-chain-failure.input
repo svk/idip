@@ -1,0 +1,10 @@
+Lon England A
+Yor England A
+Edi England A
+Lvp England A
+
+Lon-Yor
+Yor-Edi
+Edi-Cly
+Lvp-Cly
+# All four moves should fail.
