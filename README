@@ -2,3 +2,25 @@ IDIP - IRC Diplomacy
 by kaw, kaw.dev@gmail.com
 
 Not in a playable state yet.
+
+The idea here is supposed to be that IRC is an ideal platform for a social
+game like Diplomacy, containing as it does semi-advanced features for
+communication (dynamic creation of private channels, etc.) in a form many
+people are very comfortable. It is a realtime protocol where people often
+stay online for the majority of the day (idling), meaning that it suits
+both live games and 'postal' games.
+
+The bot will arrange games in a very casual, flexible fashion, e.g.
+deadlines can be pushed back, state can be changed (to correct errors
+in adjudication, to recreate a live game, ...) and so on, either by
+having an appointed "administrating player", or by consensus between
+the players. Of course, nothing that might constitute cheating can
+ever be done without being logged and visible to all players.
+
+The bot will also (someway, somehow) provide visualization through http,
+ideally in SVG format. It will make some effort to ensure that valid and
+sensible moves are submitted, even though some may feel that this
+takes away a dimension from the game, to appear friendly to newcomers.
+
+The game will be easily extensible to fit mere map-change variants.
+
